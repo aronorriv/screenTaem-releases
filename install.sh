@@ -232,9 +232,19 @@ install_linux_kiosk() {
   warn "The system will need to be rebooted after setup."
   echo ""
 
-  sudo bash "$TMP_KIOSK_SCRIPT" "$TMP_APPIMAGE"
+  local PROVISION_EXIT=0
+  sudo bash "$TMP_KIOSK_SCRIPT" "$TMP_APPIMAGE" || PROVISION_EXIT=$?
 
   rm -f "$TMP_APPIMAGE" "$TMP_KIOSK_SCRIPT"
+
+  if [ "$PROVISION_EXIT" -eq 2 ]; then
+    warn "Kiosk provisioning was aborted. Re-run the installer to try again."
+    exit 1
+  elif [ "$PROVISION_EXIT" -ne 0 ]; then
+    error "Kiosk provisioning failed (exit code $PROVISION_EXIT)."
+    exit 1
+  fi
+
   success "Kiosk provisioning complete"
 }
 
