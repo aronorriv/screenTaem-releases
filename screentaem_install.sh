@@ -69,7 +69,6 @@ apt install -y \
     curl \
     pciutils \
     ubuntu-drivers-common \
-    python3-secretstorage \
     --no-install-recommends
 
 echo "  Done"
@@ -273,6 +272,35 @@ echo "[11/12] Creating autostart, desktop shortcut, and kiosk settings..."
 mkdir -p "$KIOSK_HOME/.config/autostart"
 mkdir -p "$KIOSK_HOME/Desktop"
 
+# --- Disable GNOME Keyring entirely for kiosk user ---
+# Auto-login bypasses PAM password, so the keyring is never unlocked automatically.
+# This causes the "Choose password for new keyring" popup. Since Electron and Chrome
+# both use --password-store=basic, the keyring is unnecessary. Disable all start mechanisms.
+
+# 1. Override XDG autostart entries with Hidden=true
+for keyring_desktop in /etc/xdg/autostart/gnome-keyring-*.desktop; do
+    if [ -f "$keyring_desktop" ]; then
+        cat > "$KIOSK_HOME/.config/autostart/$(basename "$keyring_desktop")" << KEOF
+[Desktop Entry]
+Hidden=true
+KEOF
+    fi
+done
+
+# 2. Disable PAM gnome-keyring in gdm-autologin (prevents daemon start during auto-login)
+PAM_GDM="/etc/pam.d/gdm-autologin"
+if [ -f "$PAM_GDM" ]; then
+    cp "$PAM_GDM" "${PAM_GDM}.screentaem-bak"
+    sed -i '/pam_gnome_keyring\.so/s/^/#/' "$PAM_GDM"
+fi
+
+# 3. Mask systemd user units for gnome-keyring (prevents socket activation)
+mkdir -p "$KIOSK_HOME/.config/systemd/user"
+ln -sf /dev/null "$KIOSK_HOME/.config/systemd/user/gnome-keyring-daemon.socket" 2>/dev/null || true
+ln -sf /dev/null "$KIOSK_HOME/.config/systemd/user/gnome-keyring-daemon.service" 2>/dev/null || true
+
+echo "  GNOME Keyring disabled for kiosk user"
+
 # --- Launcher wrapper (detects crash vs clean exit) ---
 cat > "$KIOSK_HOME/app/screentaem-launcher.sh" << 'LAUNCHEREOF'
 #!/bin/bash
@@ -342,21 +370,6 @@ cat > "$KIOSK_HOME/app/gnome-kiosk-setup.sh" << 'SETUPEOF'
 #!/bin/bash
 # One-time GNOME settings for kiosk mode
 
-# Initialize GNOME Keyring with empty password (prevents "choose password" popup)
-# This allows apps like Spotify and Chrome to store credentials without prompting
-echo -n "" | gnome-keyring-daemon --unlock --replace 2>/dev/null || true
-
-# Create the default keyring file with empty password if it doesn't exist
-if [ ! -f "$HOME/.local/share/keyrings/Default_keyring.keyring" ] && \
-   [ ! -f "$HOME/.local/share/keyrings/default.keyring" ]; then
-    mkdir -p "$HOME/.local/share/keyrings"
-    python3 -c "
-import secretstorage
-conn = secretstorage.dbus_init()
-secretstorage.get_default_collection(conn)
-" 2>/dev/null || true
-fi
-
 # Disable screen lock
 gsettings set org.gnome.desktop.screensaver lock-enabled false
 gsettings set org.gnome.desktop.screensaver ubuntu-lock-on-suspend false 2>/dev/null || true
@@ -398,19 +411,8 @@ X-GNOME-Autostart-Delay=1
 NoDisplay=true
 EOF
 
-# --- Unlock GNOME Keyring on every login (auto-login skips PAM unlock) ---
-cat > "$KIOSK_HOME/.config/autostart/unlock-keyring.desktop" << 'EOF'
-[Desktop Entry]
-Type=Application
-Name=Unlock Keyring
-Exec=bash -c 'echo -n "" | gnome-keyring-daemon --unlock --replace 2>/dev/null || true'
-Terminal=false
-X-GNOME-Autostart-enabled=true
-X-GNOME-Autostart-Delay=0
-NoDisplay=true
-EOF
-
 # Note: DPMS autostart entry removed — Electron's powerSaveBlocker handles this now.
+# Note: GNOME Keyring is fully disabled earlier in this script (XDG autostart + PAM + systemd).
 
 chown -R "$KIOSK_USER:$KIOSK_USER" "$KIOSK_HOME/.config"
 chown -R "$KIOSK_USER:$KIOSK_USER" "$KIOSK_HOME/Desktop"
