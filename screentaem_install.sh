@@ -47,7 +47,7 @@ echo ""
 read -rp "  Continue? (y/n): " CONFIRM
 case "$CONFIRM" in
     [yY]|[yY][eE][sS]) ;;
-    *) echo "  Aborted."; exit 0 ;;
+    *) echo "  Aborted."; exit 2 ;;
 esac
 
 # --- 1. System update & install Ubuntu Desktop ---
