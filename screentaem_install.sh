@@ -44,7 +44,7 @@ echo ""
 echo "  This will install Ubuntu Desktop (~2-3 GB)"
 echo "  and configure the kiosk environment."
 echo ""
-read -rp "  Continue? (y/n): " CONFIRM
+read -rp "  Continue? (y/n): " CONFIRM </dev/tty
 case "$CONFIRM" in
     [yY]|[yY][eE][sS]) ;;
     *) echo "  Aborted."; exit 2 ;;
@@ -165,7 +165,7 @@ echo ""
 echo "  SSH allows remote access to this kiosk."
 echo "  Disabling it improves security but prevents remote maintenance."
 echo ""
-read -rp "  Do you want to keep SSH enabled? (y/n): " SSH_CHOICE
+read -rp "  Do you want to keep SSH enabled? (y/n): " SSH_CHOICE </dev/tty
 case "$SSH_CHOICE" in
     [yY]|[yY][eE][sS])
         ufw allow ssh
